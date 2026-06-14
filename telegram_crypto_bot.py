@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ربات تلگرام اسکنر موقعیت معاملاتی (کریپتو + طلا/نقره + فارکس)
-نسخه بهبودیافته با منوی دکمه‌ای
+نسخه بهبودیافته با منوی دکمه‌ای + Keep-Alive برای Render
 
 نحوه اجرا:
   1) pip install -r requirements.txt
@@ -12,8 +12,11 @@
 
 import os
 import logging
+import threading
 import requests
 from datetime import datetime, timedelta
+
+from flask import Flask
 
 from telegram import (
     Update,
@@ -37,7 +40,12 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8909564256:AAF15QEnh_1sjl0RZKgiQ4X4cfk5tGipork")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "متغیر محیطی BOT_TOKEN تنظیم نشده! "
+        "آن را در تنظیمات سرویس (Render -> Environment) اضافه کن."
+    )
 
 CACHE: dict = {}
 CACHE_TTL = timedelta(minutes=3)
@@ -56,6 +64,28 @@ METALS = [
     ("XAU", "طلای جهانی (انس)", 0.008),
     ("XAG", "نقره جهانی (انس)", 0.015),
 ]
+
+# ---------------------------------------------------------------------------
+# Keep-Alive Web Server (برای Render Free)
+# ---------------------------------------------------------------------------
+
+flask_app = Flask("keep_alive")
+
+
+@flask_app.route("/")
+def home():
+    return "Bot is alive!"
+
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(host="0.0.0.0", port=port)
+
+
+def keep_alive():
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
+
 
 # ---------------------------------------------------------------------------
 # منوی اصلی (Reply Keyboard)
@@ -640,6 +670,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 
 def main():
+    keep_alive()  # شروع وب‌سرور کوچک برای Render
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
